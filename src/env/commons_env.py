@@ -6,7 +6,7 @@ from env.constants import *
 
 class MapEnv:
 
-    def __init__(self, bass_map, num_agents=1, color_map=None, agents_vision=11, beam_size=(1, 6),
+    def __init__(self, bass_map, num_agents=1, color_map=None, agents_vision=11, beam_size=(2, 10), ep_length=750,
                  characters_map=CHARACTERS_MAP, gray_scale=True, normalize=True):
         """
 
@@ -27,6 +27,8 @@ class MapEnv:
         self.spawn_props = SPAWN_PROB
         self.characters_map = characters_map
         self.gray_scale = gray_scale
+        self.ep_length = ep_length
+        self.iter = 0
 
         self.base_map = map_to_ascii(bass_map)
         self.extended_grid = build_extended_grid(self.base_map, self.agents_vision)
@@ -48,6 +50,17 @@ class MapEnv:
         self.reset()
         plt.ion()
 
+    @property
+    def action_space(self):
+        return {0: 'MOVE_LEFT',
+                1: 'MOVE_RIGHT',
+                2: 'MOVE_UP',
+                3: 'MOVE_DOWN',
+                4: 'STAY',
+                5: 'SIGHT_CLOCKWISE',
+                6: 'SIGHT_COUNTERCLOCKWISE',
+                7: "SHOOT"}
+
     def total_rewards(self):
         return {agent_name: agent.total_rewards for agent_name, agent in self.agents.items()}
 
@@ -62,8 +75,10 @@ class MapEnv:
         self.extended_grid = np.char.replace(self.extended_grid, "P", self.characters_map["space"])
         self.apple_eaten = set()
         positions = random.sample(self.agents_respawn_position, self.num_agents)
+        self.iter = 0
         for i, agent in enumerate(self.agents.values()):
             agent.reset(positions[i], self.base_map)
+            self.update_state_state_by_agent(agent)
         return {agent_id: self.get_partial_observation(agent_id) for agent_id in self.agents.keys()}
 
     def get_partial_observation(self, agent_id):
@@ -151,6 +166,7 @@ class MapEnv:
 
     def step(self, actions):
         # clean previous beam and update apples on board
+
         self.clean_beams()
         self.update_apples()
 
@@ -159,7 +175,9 @@ class MapEnv:
         # create en empty gym-like parameters
         n_observation = {f"agent-{i}": None for i in range(self.num_agents)}
         n_rewards = {f"agent-{i}": None for i in range(self.num_agents)}
-        n_done = {f"agent-{i}": None for i in range(self.num_agents)}
+        if self.iter >= self.ep_length:
+            return n_observation, n_rewards, True, None
+        done = False
         self.current_hits = 0
 
         # agents actions
@@ -175,8 +193,8 @@ class MapEnv:
             # make agent act and check if an apple was eaten in that turn
             n_observation[agent_id] = self.get_partial_observation(agent_id)
             n_rewards[agent_id] = agent.current_reward
-            n_done[agent_id] = False
-        return n_observation, n_rewards, n_done, None
+        self.iter += 1
+        return n_observation, n_rewards, done, None
 
     def get_full_state(self):
         extended_grid = self.map_to_colors(self.extended_grid)
@@ -193,13 +211,13 @@ class MapEnv:
             beam_width, beam_height = self.beam_size
 
             if self.agents[agent_id].orientation[0] == -1:  # sight is up
-                x_start, x_end = sorted([x+1, max(upper_wall+1, x - beam_height)])
+                x_start, x_end = sorted([x+1, max(upper_wall+1, x - beam_height+1)])
                 y_start, y_end = sorted([max(left_wall+1, y - beam_width), min(right_wall, y + beam_width+1)])
                 self.extended_grid[x_start: x_end, y_start: y_end] = f
 
             elif self.agents[agent_id].orientation[1] == 1:  # sight is right
                 x_start, x_end = sorted([max(upper_wall+1, x - beam_width), min(down_wall, x + beam_width+1)])
-                y_start, y_end = sorted([y, min(right_wall, y + beam_height+1)])
+                y_start, y_end = sorted([y, min(right_wall, y + beam_height)])
                 self.extended_grid[x_start: x_end, y_start: y_end] = f
 
             elif self.agents[agent_id].orientation[0] == 1:  # sight is down
@@ -209,7 +227,7 @@ class MapEnv:
 
             else:  # sight is left
                 x_start, x_end = sorted([max(upper_wall+1, x - beam_width), min(down_wall, x + beam_width+1)])
-                y_start, y_end = sorted([max(left_wall+1, y - beam_height),y+1])
+                y_start, y_end = sorted([max(left_wall+1, y - beam_height+1),y+1])
                 self.extended_grid[x_start: x_end, y_start: y_end] = f
 
             self.extended_grid[x, y] = self.characters_map["agent"]
