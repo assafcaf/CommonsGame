@@ -36,9 +36,7 @@ if __name__ == '__main__':
     n_agents = 12
     lr = 1e-5
     agents_vision = 21
-    gray_scale = False
-    channels = 1 if gray_scale else 3
-    input_shape = (agents_vision, agents_vision, channels)
+    input_shape = (agents_vision, agents_vision, 3)
     replay_start_size = int(1e6)
     save_every = 100
     model_type = "dense"
@@ -49,18 +47,17 @@ if __name__ == '__main__':
 
     # init env
     env = MapEnv(bass_map=ORIGINAL_MAP, num_agents=n_agents, color_map=DEFAULT_COLOURS,
-                 agents_vision=agents_vision, gray_scale=gray_scale, normalize=True)
+                 agents_vision=agents_vision, normalize=True)
     num_actions = env.action_space_n
 
     # build model
     trainer = MultiAgent(input_shape=input_shape,
                          num_actions=num_actions,
                          ep_steps=ep_length,
-                         agent_history_length=channels,
                          model_name=model_name,
                          num_agents=n_agents,
                          lr=lr, save_weight_interval=save_every,
                          runnig_from=out_put_directory)
 
     # start training
-    trainer.train_no_history(env)
+    trainer.train(env)

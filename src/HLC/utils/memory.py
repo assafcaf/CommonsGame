@@ -79,7 +79,7 @@ class ReplayMemoryTfCast:
             action_batch.append(tf.constant(selected_mem.action, tf.int32))
             reward_batch.append(tf.constant(selected_mem.reward, tf.float32))
             next_state_batch.append(tf.constant(selected_mem.next_state, tf.float32))
-            terminal_batch.append(tf.constant(selected_mem.terminal, tf.bool))
+            terminal_batch.append(tf.constant(selected_mem.terminal, tf.float32))
 
         return tf.stack(state_batch, axis=0), tf.stack(action_batch, axis=0), tf.stack(reward_batch, axis=0), tf.stack(
             next_state_batch, axis=0), tf.stack(terminal_batch, axis=0)
@@ -158,7 +158,7 @@ class ReplayMemory:
             action_batch.append(tf.constant(selected_mem.action, tf.int32))
             reward_batch.append(tf.constant(selected_mem.reward, tf.float32))
             next_state_batch.append(tf.constant(selected_mem.next_state, tf.float32))
-            terminal_batch.append(tf.constant(selected_mem.terminal, tf.bool))
+            terminal_batch.append(tf.constant(selected_mem.terminal, tf.float32))
 
         return tf.stack(state_batch, axis=0), tf.stack(action_batch, axis=0), tf.stack(reward_batch, axis=0), \
             tf.stack(next_state_batch, axis=0), tf.stack(terminal_batch, axis=0)

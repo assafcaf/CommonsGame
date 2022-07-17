@@ -7,7 +7,7 @@ from env.constants import *
 class MapEnv:
 
     def __init__(self, bass_map, num_agents=1, color_map=None, agents_vision=11, beam_size=(2, 10), ep_length=750,
-                 characters_map=CHARACTERS_MAP, gray_scale=True, normalize=True):
+                 characters_map=CHARACTERS_MAP, normalize=True):
         """
 
         Parameters
@@ -26,7 +26,6 @@ class MapEnv:
         self.beam_size = beam_size
         self.spawn_props = SPAWN_PROB
         self.characters_map = characters_map
-        self.gray_scale = gray_scale
         self.ep_length = ep_length
         self.iter = 0
 
@@ -90,8 +89,6 @@ class MapEnv:
             observation = self.map_to_colors(self.extended_grid[p[0]-v:p[0]+v+1, p[1]-v:p[1]+v+1])
             observation[v, v] = self.color_map['O']
 
-        if self.gray_scale:
-            observation = obs2gray_scale(observation)
         return observation / 255 if self.normalize else observation
 
     def update_apples(self):
@@ -112,7 +109,7 @@ class MapEnv:
             self.apple_eaten.remove(apple_pos)
 
     def n_neighbors(self, pos):
-        neighbors = self.extended_grid[pos[0]-1: pos[0]+2, pos[1]-1: pos[1]+2]
+        neighbors = self.extended_grid[pos[0]-2: pos[0]+3, pos[1]-2: pos[1]+3]
         return np.sum(neighbors == self.characters_map["apple"])
 
     def clean_beams(self):
@@ -169,15 +166,13 @@ class MapEnv:
 
         self.clean_beams()
         self.update_apples()
+        done = False
 
         #
 
         # create en empty gym-like parameters
         n_observation = {f"agent-{i}": None for i in range(self.num_agents)}
         n_rewards = {f"agent-{i}": None for i in range(self.num_agents)}
-        if self.iter >= self.ep_length:
-            return n_observation, n_rewards, True, None
-        done = False
         self.current_hits = 0
 
         # agents actions
@@ -194,6 +189,10 @@ class MapEnv:
             n_observation[agent_id] = self.get_partial_observation(agent_id)
             n_rewards[agent_id] = agent.current_reward
         self.iter += 1
+
+        # checks if env reached terminal state
+        if self.iter >= self.ep_length:
+            done = True
         return n_observation, n_rewards, done, None
 
     def get_full_state(self):

@@ -73,7 +73,6 @@ class Agent:
         action = np.random.choice(self.num_actions, p=probs)
         return action
 
-    # @tf.function
     def update_main_q_network(self):
         """Update main q network by experience replay method.
         Returns:
@@ -85,7 +84,7 @@ class Agent:
         with tf.GradientTape() as tape:
             next_state_q = self.target_network(next_states)
             next_state_max_q = tf.math.reduce_max(next_state_q, axis=1)
-            expected_q = rewards + self.discount_factor * next_state_max_q
+            expected_q = rewards + self.discount_factor * next_state_max_q * (1-terminal)
             main_q = tf.reduce_sum(self.main_network(states) * tf.one_hot(actions, self.num_actions, 1.0, 0.0), axis=1)
             loss = self.loss(tf.stop_gradient(expected_q), main_q)
 
