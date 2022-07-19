@@ -112,7 +112,7 @@ class MultiAgent:
             eps = terminal_eps
         return eps
 
-    def update_main_q_network(self):
+    def learn(self):
         """Update main q network by experience replay method.
         Returns:
             loss (tf.float32): Huber loss of temporal difference.
