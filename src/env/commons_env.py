@@ -28,7 +28,7 @@ class MapEnv:
         self.characters_map = characters_map
         self.ep_length = ep_length
         self.iter = 0
-
+        self.neighbors_r = 2
         self.base_map = map_to_ascii(bass_map)
         self.extended_grid = build_extended_grid(self.base_map, self.agents_vision)
 
@@ -51,14 +51,14 @@ class MapEnv:
 
     @property
     def action_space(self):
-        return {0: 'MOVE_LEFT',
-                1: 'MOVE_RIGHT',
-                2: 'MOVE_UP',
-                3: 'MOVE_DOWN',
-                4: 'STAY',
-                5: 'SIGHT_CLOCKWISE',
-                6: 'SIGHT_COUNTERCLOCKWISE',
-                7: "SHOOT"}
+        return {'MOVE_LEFT': 0 ,
+                'MOVE_RIGHT': 1,
+                'MOVE_UP': 2,
+                'MOVE_DOWN': 3,
+                'STAY': 4,
+                'SIGHT_CLOCKWISE': 5,
+                'SIGHT_COUNTERCLOCKWISE': 6,
+                "SHOOT": 7}
 
     def total_rewards(self):
         return {agent_name: agent.total_rewards for agent_name, agent in self.agents.items()}
@@ -109,7 +109,8 @@ class MapEnv:
             self.apple_eaten.remove(apple_pos)
 
     def n_neighbors(self, pos):
-        neighbors = self.extended_grid[pos[0]-2: pos[0]+3, pos[1]-2: pos[1]+3]
+        neighbors = self.extended_grid[pos[0]-self.neighbors_r: pos[0]+self.neighbors_r+1,
+                                       pos[1]-self.neighbors_r: pos[1]+self.neighbors_r+1]
         return np.sum(neighbors == self.characters_map["apple"])
 
     def clean_beams(self):
@@ -316,3 +317,6 @@ class MapEnv:
             sight_pos = tuple(np.array(agent.position) + np.array(agent.orientation))
             self.update_agent_position_on_grid(agent.position, sight_pos)
             self.update_agent_position_on_grid(agent.position, sight_pos)
+
+    def is_apples_available(self):
+        return not len(self.apple_eaten) == len(self.apples_respawn_position)

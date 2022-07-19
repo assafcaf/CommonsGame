@@ -7,7 +7,6 @@ import tensorflow as tf
 from collections import deque
 from HLC.agent.dqn_agent import Agent
 from HLC.utils.metrics import get_metrics
-from HLC.utils.memory import ReplayMemory
 from timeit import default_timer as timer
 
 
@@ -15,9 +14,9 @@ class MultiAgent:
     """
     Class for DQN model architecture.
     """
-    def __init__(self, input_shape, num_actions, num_agents, ep_steps, minibatch_size=64, update_frequency=25,
-                 capacity=int(1.5e5), lr=1e-4, replay_start_size=10000, model_name="",
-                 save_weight_interval=100, target_network_update_freq=20000, runnig_from="", eps_end=750):
+    def __init__(self, input_shape, num_actions, num_agents, ep_steps, minibatch_size=64, update_frequency=50,
+                 capacity=170000, lr=1e-4, replay_start_size=5000, model_name="",
+                 save_weight_interval=100, target_network_update_freq=5, runnig_from="", final_explr_frame=500000):
 
         # Multi agent DRL params
         self.input_shape = input_shape
@@ -33,7 +32,7 @@ class MultiAgent:
         self.log_path = os.path.join(runnig_from, model_name)
         self.init_explr = 1.0
         self.final_explr = 0.1
-        self.final_explr_frame = ep_steps*eps_end
+        self.final_explr_frame = final_explr_frame
         self.replay_start_size = replay_start_size
         self.training_frames = int(1e7)
         self.print_log_interval = 1
@@ -134,21 +133,22 @@ class MultiAgent:
         for i, (agent_id, agent) in enumerate(self.agents.items()):
             loss[i] = agent.update_target_network()
 
-    def remember(self, transition, transpose):
+    def remember(self, transition):
         n_observation, actions, rewards, n_observation_next, done = transition
         for agent_id, agent in self.agents.items():
-
-            agent.remember(n_observation[agent_id].transpose(2, 1, 0) if transpose else n_observation[agent_id],
-                           actions[agent_id],
-                           rewards[agent_id],
-                           n_observation_next[agent_id].transpose(2, 1, 0) if transpose else n_observation_next[agent_id],
-                           done[agent_id])
+            if n_observation[agent_id].sum() != 0:
+                agent.remember(n_observation[agent_id],
+                               actions[agent_id],
+                               rewards[agent_id],
+                               n_observation_next[agent_id],
+                               done[agent_id])
 
     def train(self, env):
         total_step = 0
         episode = 0
         latest_100_score = deque(maxlen=100)
         fit_results = None
+        learned = False
 
         while total_step < self.training_frames:
             n_observation = env.reset()
@@ -171,33 +171,39 @@ class MultiAgent:
 
                 # store transition in memory
                 transition = (n_observation, actions, rewards, n_observation_next, n_done)
-                self.remember(transition, transpose=False)
+                self.remember(transition)
                 n_observation = n_observation_next
 
                 # update q network
                 if (total_step % self.update_frequency == 0) and (total_step > self.replay_start_size):
-                    fit_results = self.update_main_q_network()
-                if (total_step % self.target_network_update_freq == 0) and (total_step > self.replay_start_size):
-                    self.update_target_network()
+                    learned = True
+                    fit_results = self.learn()
+
 
                 # collect behavior data for analysis
                 time_reward_collected.extend([t for a, r in rewards.items() if r != 0])
                 sleepers_time.extend([1 for a, obs in n_observation.items() if obs.sum() == 0])
-                fire_tracking.extend(
-                    [(env.get_current_hits(), (np.fromiter(actions.values(), dtype=float) == 7).sum())])
+
+                # extend tuple of (|agent hits in time t|,|shots in time t|)
+                if env.is_apples_available():
+                    current_hits = env.get_current_hits()
+                    current_shots = (np.fromiter(actions.values(), dtype=float) == env.action_space["SHOOT"]).sum()  # count amount of shot actions
+                    fire_tracking.extend([(current_hits, current_shots)])
 
                 t += 1
                 total_step += 1
                 episode_step += 1
 
             # end of episode
+            # if (episode % self.target_network_update_freq == 0) and learned:
+            #     self.update_target_network()
             total_score = episode_score.sum()
             latest_100_score.append(total_score)
             eps = self.get_eps(tf.constant(total_step, tf.float32))
             fire_tracking = np.array(list(zip(*fire_tracking)), dtype=int).T.sum(axis=0)
 
             # write to summary after training has started
-            if total_step > self.replay_start_size:
+            if learned:
                 self.write_summary(total_reward=episode_score, episode=episode, results=fit_results,
                                    eps=eps,  fire_efficiency=fire_tracking[0] / fire_tracking[1],
                                    time_reward_collected=time_reward_collected, sleepers_time=sleepers_time)

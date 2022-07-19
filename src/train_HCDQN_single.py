@@ -46,23 +46,26 @@ gpu_memory_growth()
 
 if __name__ == '__main__':
     # init training params
-    ep_length = 750
-    n_agents = 12
-    lr = 0.00025
-    target_network_update_freq = 10
-    agents_vision = 21
+    ep_length = 250
+    n_agents = 1
+    lr = 1e-3
+    target_network_update_freq = 15
+    agents_vision = 15
+    batch_size = 256
+    capacity = int(1e5)
     input_shape = (agents_vision, agents_vision, 3)
-    replay_start_size = int(1e6)
+    final_explr_frame = ep_length*600
+    replay_start_size = ep_length*10
     save_every = 100
     model_type = "dense"
     # set up directories
 
-    out_put_directory = os.path.join(os.getcwd(),os.path.pardir, "logs", "HLCDDQN")
+    out_put_directory = os.path.join(os.getcwd(),os.path.pardir, "logs", "HLCDDQN_single")
     model_name = f"{date.today().strftime('%Y_%m_%d')}__{int(time.monotonic())}_{model_type}_lr_{str(lr)}"
 
     # init env
-    env = MapEnv(bass_map=ORIGINAL_MAP, num_agents=n_agents, color_map=DEFAULT_COLOURS,
-                 agents_vision=agents_vision, normalize=True)
+    env = MapEnv(bass_map=SMALL_MAP, num_agents=n_agents, color_map=DEFAULT_COLOURS,
+                 agents_vision=agents_vision, normalize=True, ep_length=ep_length)
     num_actions = env.action_space_n
 
     # build model
@@ -73,7 +76,11 @@ if __name__ == '__main__':
                          num_agents=n_agents,
                          lr=lr, save_weight_interval=save_every,
                          runnig_from=out_put_directory,
-                         update_frequency=ep_length//2,
+                         update_frequency=ep_length//1,
+                         final_explr_frame=final_explr_frame,
+                         replay_start_size=replay_start_size,
+                         capacity=capacity,
+                         minibatch_size=batch_size,
                          target_network_update_freq=target_network_update_freq)
 
     # start training

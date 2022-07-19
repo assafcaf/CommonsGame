@@ -1,4 +1,4 @@
-import gym
+
 import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.layers import Conv2D, Dense, Flatten, Lambda, Input
@@ -37,16 +37,11 @@ class DQNNetwork(Model):
     Class for DQN model architecture.
     """
 
-    def __init__(self, input_shape, num_actions: int, agent_history_length: int):
+    def __init__(self, input_shape, num_actions: int):
         super(DQNNetwork, self).__init__()
         self.layers_ = []
-        # self.layers_.append(Conv2D(filters=16, kernel_size=3, strides=1, input_shape=(None, *input_shape),
-        #                     kernel_initializer=initializer(scale=2), activation="relu"))
-        #
-        # self.layers_.append(Conv2D(filters=16, kernel_size=3, strides=2, kernel_initializer=initializer(scale=.2),
-        #                     activation="relu"))
-
-        self.layers_.append(Flatten())
+        # self.layers_.append(Input(shape=(None, *input_shape)))
+        self.layers_.append(Flatten(input_dim=input_shape))
         self.layers_.append(Dense(32, kernel_initializer=initializer(scale=.2), activation='relu'))
         self.layers_.append(Dense(32, kernel_initializer=initializer(scale=.2), activation='relu'))
         self.layers_.append(Dense(num_actions, kernel_initializer=initializer(scale=.2), activation="linear"))

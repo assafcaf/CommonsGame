@@ -2,7 +2,7 @@ import os
 import random
 import numpy as np
 import tensorflow as tf
-from HLC.utils.memory import ReplayMemory
+from HLC.utils.memory import ReplayMemory, ReplayBuffer, ReplayBuffer2
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.models import load_model
 from HLC.networks.dqn_network import DQNNetwork, build_dense_model
@@ -12,29 +12,26 @@ class Agent:
     """
     Class for DQN model architecture.
     """
-    def __init__(self, input_shape, num_actions, minibatch_size=32, agent_history_length=4, capacity=10000, lr=1e-4,
-                 replay_start_size=10000, agent_directory="", discount_factor=.99):
+    def __init__(self, input_shape, num_actions, minibatch_size=128, capacity=10000, lr=1e-4,
+                 replay_start_size=10000, agent_directory="", discount_factor=.99, tau=0.0001):
 
         self.discount_factor = discount_factor
         self.minibatch_size = minibatch_size
-        self.agent_history_length = agent_history_length
         self.num_actions = num_actions
         self.agent_directory = agent_directory
+        self.replay_start_size = replay_start_size
+        self.tau = tau
 
         # memory
-        self.memory = ReplayMemory(capacity=capacity, minibatch_size=self.minibatch_size, verbose=False)
+        # self.memory = ReplayBuffer(input_shape=input_shape, capacity=capacity, minibatch_size=minibatch_size)
+        self.memory = ReplayBuffer2(buffer_size=capacity, batch_size=minibatch_size)
 
         # agent networks
-        self.main_network = DQNNetwork(input_shape, num_actions, agent_history_length)
-        self.target_network = DQNNetwork(input_shape, num_actions, agent_history_length)
+        self.main_network = DQNNetwork(input_shape, num_actions)
+        self.target_network = DQNNetwork(input_shape, num_actions)
         self.update_target_network()
         self.optimizer = Adam(learning_rate=lr, epsilon=1e-6)
-
-        self.replay_start_size = replay_start_size
         self.loss = tf.keras.losses.Huber()
-
-        # self.loss_metric = tf.keras.metrics.Mean(name="loss")
-        # self.q_metric = tf.keras.metrics.Mean(name="Q_value")
 
         # create directory to save agent weights
         if not os.path.isdir(self.agent_directory):
@@ -73,35 +70,47 @@ class Agent:
         action = np.random.choice(self.num_actions, p=probs)
         return action
 
-    def update_main_q_network(self):
+    def learn(self):
         """Update main q network by experience replay method.
         Returns:
             loss (tf.float32): MSE loss of temporal difference.
         """
-        indices = self.memory.get_minibatch_indices()
-        states, actions, rewards, next_states, terminal = self.memory.generate_minibatch_samples(indices)
+        # indices = self.memory.get_minibatch_indices()
+        states, actions, rewards, next_states, terminal = self.memory.generate_minibatch_samples()
 
         with tf.GradientTape() as tape:
-            next_state_q = self.target_network(next_states)
-            next_state_max_q = tf.math.reduce_max(next_state_q, axis=1)
-            expected_q = rewards + self.discount_factor * next_state_max_q * (1-terminal)
-            main_q = tf.reduce_sum(self.main_network(states) * tf.one_hot(actions, self.num_actions, 1.0, 0.0), axis=1)
-            loss = self.loss(tf.stop_gradient(expected_q), main_q)
+            next_state_max_q = tf.math.reduce_max(self.target_network(next_states), axis=1)
+            expected_q = rewards + self.discount_factor * next_state_max_q * (1 - terminal)
+            main_q = self.main_network(states)
+            actual_q = tf.reduce_sum(main_q * tf.one_hot(actions, self.num_actions, 1.0, 0.0), axis=1)
+            loss = self.loss(tf.stop_gradient(expected_q), actual_q)
 
         gradients = tape.gradient(loss, self.main_network.trainable_variables)
-        clipped_gradients = [tf.clip_by_norm(grad, 10) for grad in gradients]
-        self.optimizer.apply_gradients(zip(clipped_gradients, self.main_network.trainable_variables))
+        self.optimizer.apply_gradients(zip(gradients, self.main_network.trainable_variables))
 
-        certainty = tf.reduce_mean(tf.reduce_max(tf.nn.softmax(next_state_q), axis=1)).numpy()
+        certainty = tf.reduce_mean(tf.reduce_max(tf.nn.softmax(main_q), axis=1)).numpy()
+        self.soft_update_target_network()
         return loss, tf.math.reduce_mean(main_q), tf.reduce_mean(certainty)
+
+    def soft_update_target_network(self):
+        """Soft update model parameters.
+        θ_target = τ*θ_local + (1 - τ)*θ_target
+
+        Params
+        ======
+            local_model (PyTorch model): weights will be copied from
+              target_model (PyTorch model): weights will be copied to
+              tau (float): interpolation parameter
+        """
+        main_w = self.main_network.get_weights()
+        target_w = self.target_network.get_weights()
+        for i in range(len(main_w)):
+            target_w[i] = self.tau * main_w[i] + (1 - self.tau) * target_w[i]
+        self.target_network.set_weights(target_w)
 
     def update_target_network(self):
         """Synchronize weights of target network by those of main network."""
-        
-        main_vars = self.main_network.trainable_variables
-        target_vars = self.target_network.trainable_variables
-        for main_var, target_var in zip(main_vars, target_vars):
-            target_var.assign(main_var)
+        self.target_network.set_weights(self.main_network.trainable_variables)
 
     def remember(self, observation, action, reward, observation_next, done):
         self.memory.push(observation, action, reward, observation_next, done)

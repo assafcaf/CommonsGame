@@ -2,7 +2,7 @@ from collections import namedtuple
 import random
 import tensorflow as tf
 import numpy as np
-
+from collections import deque, namedtuple
 Transition = namedtuple("Transition", ("state", "action", "reward", "next_state", "terminal"))
 
 
@@ -162,3 +162,78 @@ class ReplayMemory:
 
         return tf.stack(state_batch, axis=0), tf.stack(action_batch, axis=0), tf.stack(reward_batch, axis=0), \
             tf.stack(next_state_batch, axis=0), tf.stack(terminal_batch, axis=0)
+
+
+class ReplayBuffer:
+    def __init__(self, input_shape, capacity, minibatch_size=32):
+        self.index = 0
+        self.minibatch_size = minibatch_size
+        self.is_full = False
+        self.capacity = capacity
+        self.observations = np.zeros((capacity, *input_shape), dtype=np.int)
+        self.next_observations = np.zeros((capacity, *input_shape), dtype=np.int)
+        self.rewards = np.zeros(capacity, dtype=np.float)
+        self.actions = np.zeros(capacity, dtype=np.int)
+        self.terminal = np.zeros(capacity, dtype=np.bool)
+
+    def push(self, observation, action, reward, next_observation, terminal):
+        self.observations[self.index, :] = observation
+        self.next_observations[self.index, :] = next_observation
+        self.rewards[self.index] = reward
+        self.actions[self.index] = action
+        self.terminal[self.index] = terminal
+        self.index = (1 + self.index) % self.capacity
+        if self.index == 0 and not self.is_full:
+            self.is_full = self.capacity
+            print(f"Memory in size of<{self.capacity}> is full...")
+
+    def get_minibatch_indices(self):
+        return random.sample(range(self.capacity if self.is_full else self.index), self.minibatch_size)
+
+    def generate_minibatch_samples(self, indices):
+        # indices = random.sample(range(self.capacity if self.is_full else self.index), batch_size)
+        batch_sample = (tf.cast(tf.stack(self.observations[indices, :], axis=0), dtype=tf.float32),
+                        tf.cast(tf.stack(self.actions[indices], axis=0), dtype=tf.int32),
+                        tf.cast(tf.stack(self.rewards[indices], axis=0), dtype=tf.float32),
+                        tf.cast(tf.stack(self.next_observations[indices, :], axis=0), dtype=tf.float32),
+                        tf.cast(tf.stack(self.terminal[indices], axis=0), dtype=tf.float32))
+        return batch_sample
+
+
+class ReplayBuffer2:
+    """Fixed-size buffer to store experience tuples."""
+
+    def __init__(self, buffer_size, batch_size):
+        """Initialize a ReplayBuffer object.
+
+        Params
+        ======
+            buffer_size (int): maximum size of buffer
+            batch_size (int): size of each training batch
+            seed (int): random seed
+        """
+        self.memory = deque(maxlen=buffer_size)
+        self.batch_size = batch_size
+        self.experience = namedtuple("Experience", field_names=["state", "action", "reward", "next_state", "done"])
+
+    def push(self, state, action, reward, next_state, done):
+        """Add a new experience to memory."""
+        e = self.experience(state, action, reward, next_state, done)
+        self.memory.append(e)
+
+    def generate_minibatch_samples(self):
+        """Raclass ReplayBuffer:ndomly sample a batch of experiences from memory."""
+        # sample batch from experience
+        experiences = random.sample(self.memory, k=self.batch_size)
+
+        # convert batch to tf objects
+        states = tf.cast(tf.stack(np.array([e.state for e in experiences if e is not None]), axis=0), dtype=tf.float32)
+        actions = tf.cast(tf.stack([e.action for e in experiences if e is not None], axis=0), dtype=tf.int32)
+        rewards = tf.cast(tf.stack([e.reward for e in experiences if e is not None], axis=0), dtype=tf.float32)
+        next_states = tf.cast(tf.stack([e.next_state for e in experiences if e is not None], axis=0), dtype=tf.float32)
+        dones = tf.cast(tf.stack([e.done for e in experiences if e is not None], axis=0), dtype=tf.float32)
+        return (states, actions, rewards, next_states, dones)
+
+    def __len__(self):
+        """Return the current size of internal memory."""
+        return len(self.memory)

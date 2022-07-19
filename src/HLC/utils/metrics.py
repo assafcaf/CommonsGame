@@ -47,7 +47,7 @@ def efficiency(total_rewards, n_players, ep_length):
     :param ep_length: int, repeats the max time index possibly by episode configuration
     :return: float, efficiency metric [0, 1]
     """
-    return sum(total_rewards) / n_players
+    return total_rewards.mean() * (1000/ep_length)
 
 
 def get_metrics(total_rewards, n_players, ep_length, sleepers_time, time_reward_collected):
